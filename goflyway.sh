@@ -5,17 +5,20 @@ export PATH
 #=================================================
 #	System Required: CentOS/Debian/Ubuntu
 #	Description: GoFlyway
-#	Version: 1.0.1
+#	Version: 1.0.5
 #	Author: Toyo
 #	Blog: https://doub.io/goflyway-jc2/
 #=================================================
 
-sh_ver="1.0.1"
+sh_ver="1.0.5"
+filepath=$(cd "$(dirname "$0")"; pwd)
+file_1=$(echo -e "${filepath}"|awk -F "$0" '{print $1}')
 Folder="/usr/local/goflyway"
 File="/usr/local/goflyway/goflyway"
 CONF="/usr/local/goflyway/goflyway.conf"
 Now_ver_File="/usr/local/goflyway/ver.txt"
 Log_File="/usr/local/goflyway/goflyway.log"
+Crontab_file="/usr/bin/crontab"
 
 Green_font_prefix="\033[32m" && Red_font_prefix="\033[31m" && Green_background_prefix="\033[42;37m" && Red_background_prefix="\033[41;37m" && Font_color_suffix="\033[0m"
 Info="${Green_font_prefix}[信息]${Font_color_suffix}"
@@ -44,14 +47,29 @@ check_sys(){
 check_installed_status(){
 	[[ ! -e ${File} ]] && echo -e "${Error} GoFlyway 没有安装，请检查 !" && exit 1
 }
+check_crontab_installed_status(){
+	if [[ ! -e ${Crontab_file} ]]; then
+		echo -e "${Error} Crontab 没有安装，开始安装..."
+		if [[ ${release} == "centos" ]]; then
+			yum install crond -y
+		else
+			apt-get install cron -y
+		fi
+		if [[ ! -e ${Crontab_file} ]]; then
+			echo -e "${Error} Crontab 安装失败，请检查！" && exit 1
+		else
+			echo -e "${Info} Crontab 安装成功！"
+		fi
+	fi
+}
 check_pid(){
 	PID=$(ps -ef| grep "goflyway"| grep -v grep| grep -v ".sh"| grep -v "init.d"| grep -v "service"| awk '{print $2}')
 }
 check_new_ver(){
-	new_ver=$(wget -qO- "https://github.com/coyove/goflyway/tags"| grep "/goflyway/releases/tag/"| head -n 1| awk -F "/tag/" '{print $2}'| sed 's/\">//')
+	new_ver=$(wget -qO- "https://github.com/coyove/goflyway/tags"|grep "/goflyway/releases/tag/"|grep -v '\-apk'|head -n 1|awk -F "/tag/" '{print $2}'|sed 's/\">//')
 	if [[ -z ${new_ver} ]]; then
 		echo -e "${Error} GoFlyway 最新版本获取失败，请手动获取最新版本号[ https://github.com/coyove/goflyway/releases ]"
-		stty erase '^H' && read -p "请输入版本号 [ 格式如 v1.0.0 ] :" new_ver
+		stty erase '^H' && read -p "请输入版本号 [ 格式如 v1.1.0a ] :" new_ver
 		[[ -z "${new_ver}" ]] && echo "取消..." && exit 1
 	else
 		echo -e "${Info} 检测到 GoFlyway 最新版本为 [ ${new_ver} ]"
@@ -115,17 +133,19 @@ Write_config(){
 	cat > ${CONF}<<-EOF
 port=${new_port}
 passwd=${new_passwd}
+proxy_pass=${new_proxy_pass}
 EOF
 }
 Read_config(){
 	[[ ! -e ${CONF} ]] && echo -e "${Error} GoFlyway 配置文件不存在 !" && exit 1
 	port=`cat ${CONF}|grep "port"|awk -F "=" '{print $NF}'`
 	passwd=`cat ${CONF}|grep "passwd"|awk -F "=" '{print $NF}'`
+	proxy_pass=`cat ${CONF}|grep "proxy_pass"|awk -F "=" '{print $NF}'`
 }
 Set_port(){
 	while true
 		do
-		echo -e "请输入 GoFlyway 监听端口 [1-65535]"
+		echo -e "请输入 GoFlyway 监听端口 [1-65535]（如果要伪装或者套CDN，那么只能使用端口：80 8080 8880 2052 2082 2086 2095）"
 		stty erase '^H' && read -p "(默认: 2333):" new_port
 		[[ -z "${new_port}" ]] && new_port="2333"
 		expr ${new_port} + 0 &>/dev/null
@@ -151,13 +171,48 @@ Set_passwd(){
 	echo -e "	密码 : ${Red_background_prefix} ${new_passwd} ${Font_color_suffix}"
 	echo "========================" && echo
 }
+Set_proxy_pass(){
+	echo "请输入 GoFlyway 要伪装的网站(反向代理，只支持 HTTP:// 网站)"
+	stty erase '^H' && read -p "(默认不伪装):" new_proxy_pass
+	if [[ ! -z ${new_proxy_pass} ]]; then
+		echo && echo "========================"
+		echo -e "	伪装 : ${Red_background_prefix} ${new_proxy_pass} ${Font_color_suffix}"
+		echo "========================" && echo
+	fi
+}
 Set_conf(){
 	Set_port
 	Set_passwd
+	Set_proxy_pass
 }
-Set_goflyway(){
-	check_installed_status
-	check_pid
+Modify_port(){
+	Set_port
+	Read_config
+	new_passwd="${passwd}"
+	new_proxy_pass="${proxy_pass}"
+	Del_iptables
+	Write_config
+	Add_iptables
+	Save_iptables
+	Restart_goflyway
+}
+Modify_passwd(){
+	Set_passwd
+	Read_config
+	new_port="${port}"
+	new_proxy_pass="${proxy_pass}"
+	Write_config
+	Restart_goflyway
+}
+Modify_proxy_pass(){
+	Set_proxy_pass
+	Read_config
+	new_port="${port}"
+	new_passwd="${passwd}"
+	Write_config
+	Restart_goflyway
+}
+Modify_all(){
 	Set_conf
 	Read_config
 	Del_iptables
@@ -165,6 +220,33 @@ Set_goflyway(){
 	Add_iptables
 	Save_iptables
 	Restart_goflyway
+}
+Set_goflyway(){
+	check_installed_status
+	echo && echo -e "你要做什么？
+ ${Green_font_prefix}1.${Font_color_suffix}  修改 端口配置
+ ${Green_font_prefix}2.${Font_color_suffix}  修改 密码配置
+ ${Green_font_prefix}3.${Font_color_suffix}  修改 伪装配置(反向代理)
+ ${Green_font_prefix}4.${Font_color_suffix}  修改 全部配置
+————————————————
+ ${Green_font_prefix}5.${Font_color_suffix}  监控 运行状态
+ 
+ ${Tip} 用户的端口是不能重复的，密码可以重复 !" && echo
+	stty erase '^H' && read -p "(默认: 取消):" gf_modify
+	[[ -z "${gf_modify}" ]] && echo "已取消..." && exit 1
+	if [[ ${gf_modify} == "1" ]]; then
+		Modify_port
+	elif [[ ${gf_modify} == "2" ]]; then
+		Modify_passwd
+	elif [[ ${gf_modify} == "3" ]]; then
+		Modify_proxy_pass
+	elif [[ ${gf_modify} == "4" ]]; then
+		Modify_all
+	elif [[ ${gf_modify} == "5" ]]; then
+		Set_crontab_monitor_goflyway
+	else
+		echo -e "${Error} 请输入正确的数字(1-5)" && exit 1
+	fi
 }
 Install_goflyway(){
 	[[ -e ${File} ]] && echo -e "${Error} 检测到 GoFlyway 已安装 !" && exit 1
@@ -194,6 +276,9 @@ Start_goflyway(){
 	check_pid
 	[[ ! -z ${PID} ]] && echo -e "${Error} GoFlyway 正在运行，请检查 !" && exit 1
 	/etc/init.d/goflyway start
+	sleep 1s
+	check_pid
+	[[ ! -z ${PID} ]] && View_goflyway
 }
 Stop_goflyway(){
 	check_installed_status
@@ -206,6 +291,9 @@ Restart_goflyway(){
 	check_pid
 	[[ ! -z ${PID} ]] && /etc/init.d/goflyway stop
 	/etc/init.d/goflyway start
+	sleep 1s
+	check_pid
+	[[ ! -z ${PID} ]] && View_goflyway
 }
 Update_goflyway(){
 	check_installed_status
@@ -248,18 +336,102 @@ View_goflyway(){
 			fi
 		fi
 	fi
+	[[ -z ${proxy_pass} ]] && proxy_pass="无"
+	link_qr
 	clear && echo "————————————————" && echo
 	echo -e " GoFlyway 信息 :" && echo
 	echo -e " 地址\t: ${Green_font_prefix}${ip}${Font_color_suffix}"
 	echo -e " 端口\t: ${Green_font_prefix}${port}${Font_color_suffix}"
 	echo -e " 密码\t: ${Green_font_prefix}${passwd}${Font_color_suffix}"
+	echo -e " 伪装\t: ${Green_font_prefix}${proxy_pass}${Font_color_suffix}"
+	echo -e "${link}"
+	echo -e "${Tip} 链接仅适用于Windows系统的 Goflyway Tools 客户端（https://doub.io/dbrj-11/）。"
 	echo && echo "————————————————"
+}
+urlsafe_base64(){
+	date=$(echo -n "$1"|base64|sed ':a;N;s/\n//g;ta'|sed 's/=//g;s/+/-/g;s/\//_/g')
+	echo -e "${date}"
+}
+link_qr(){
+	PWDbase64=$(urlsafe_base64 "${passwd}")
+	base64=$(urlsafe_base64 "${ip}:${port}:${PWDbase64}")
+	url="goflyway://${base64}"
+	QRcode="http://doub.pw/qr/qr.php?text=${url}"
+	link=" 链接\t: ${Red_font_prefix}${url}${Font_color_suffix} \n 二维码 : ${Red_font_prefix}${QRcode}${Font_color_suffix} \n "
 }
 View_Log(){
 	check_installed_status
 	[[ ! -e ${Log_File} ]] && echo -e "${Error} GoFlyway 日志文件不存在 !" && exit 1
 	echo && echo -e "${Tip} 按 ${Red_font_prefix}Ctrl+C${Font_color_suffix} 终止查看日志" && echo
 	tail -f ${Log_File}
+}
+Set_crontab_monitor_goflyway(){
+	check_crontab_installed_status
+	crontab_monitor_goflyway_status=$(crontab -l|grep "goflyway.sh monitor")
+	if [[ -z "${crontab_monitor_goflyway_status}" ]]; then
+		echo && echo -e "当前监控模式: ${Green_font_prefix}未开启${Font_color_suffix}" && echo
+		echo -e "确定要开启 ${Green_font_prefix}Goflyway 服务端运行状态监控${Font_color_suffix} 功能吗？(当进程关闭则自动启动SSR服务端)[Y/n]"
+		stty erase '^H' && read -p "(默认: y):" crontab_monitor_goflyway_status_ny
+		[[ -z "${crontab_monitor_goflyway_status_ny}" ]] && crontab_monitor_goflyway_status_ny="y"
+		if [[ ${crontab_monitor_goflyway_status_ny} == [Yy] ]]; then
+			crontab_monitor_goflyway_cron_start
+		else
+			echo && echo "	已取消..." && echo
+		fi
+	else
+		echo && echo -e "当前监控模式: ${Green_font_prefix}已开启${Font_color_suffix}" && echo
+		echo -e "确定要关闭 ${Green_font_prefix}Goflyway 服务端运行状态监控${Font_color_suffix} 功能吗？(当进程关闭则自动启动SSR服务端)[y/N]"
+		stty erase '^H' && read -p "(默认: n):" crontab_monitor_goflyway_status_ny
+		[[ -z "${crontab_monitor_goflyway_status_ny}" ]] && crontab_monitor_goflyway_status_ny="n"
+		if [[ ${crontab_monitor_goflyway_status_ny} == [Yy] ]]; then
+			crontab_monitor_goflyway_cron_stop
+		else
+			echo && echo "	已取消..." && echo
+		fi
+	fi
+}
+crontab_monitor_goflyway_cron_start(){
+	crontab -l > "$file_1/crontab.bak"
+	sed -i "/goflyway.sh monitor/d" "$file_1/crontab.bak"
+	echo -e "\n* * * * * /bin/bash $file_1/goflyway.sh monitor" >> "$file_1/crontab.bak"
+	crontab "$file_1/crontab.bak"
+	rm -r "$file_1/crontab.bak"
+	cron_config=$(crontab -l | grep "goflyway.sh monitor")
+	if [[ -z ${cron_config} ]]; then
+		echo -e "${Error} Goflyway 服务端运行状态监控功能 启动失败 !" && exit 1
+	else
+		echo -e "${Info} Goflyway 服务端运行状态监控功能 启动成功 !"
+	fi
+}
+crontab_monitor_goflyway_cron_stop(){
+	crontab -l > "$file_1/crontab.bak"
+	sed -i "/goflyway.sh monitor/d" "$file_1/crontab.bak"
+	crontab "$file_1/crontab.bak"
+	rm -r "$file_1/crontab.bak"
+	cron_config=$(crontab -l | grep "goflyway.sh monitor")
+	if [[ ! -z ${cron_config} ]]; then
+		echo -e "${Error} Goflyway 服务端运行状态监控功能 停止失败 !" && exit 1
+	else
+		echo -e "${Info} Goflyway 服务端运行状态监控功能 停止成功 !"
+	fi
+}
+crontab_monitor_goflyway(){
+	check_installed_status
+	check_pid
+	echo "${PID}"
+	if [[ -z ${PID} ]]; then
+		echo -e "${Error} [$(date "+%Y-%m-%d %H:%M:%S %u %Z")] 检测到 Goflyway服务端 未运行 , 开始启动..." | tee -a ${Log_File}
+		/etc/init.d/goflyway start
+		sleep 1s
+		check_pid
+		if [[ -z ${PID} ]]; then
+			echo -e "${Error} [$(date "+%Y-%m-%d %H:%M:%S %u %Z")] Goflyway服务端 启动失败..." | tee -a ${Log_File}
+		else
+			echo -e "${Info} [$(date "+%Y-%m-%d %H:%M:%S %u %Z")] Goflyway服务端 启动成功..." | tee -a ${Log_File}
+		fi
+	else
+		echo -e "${Info} [$(date "+%Y-%m-%d %H:%M:%S %u %Z")] Goflyway服务端 进程运行正常..." | tee -a ${Log_File}
+	fi
 }
 Add_iptables(){
 	iptables -I INPUT -m state --state NEW -m tcp -p tcp --dport ${new_port} -j ACCEPT
@@ -280,18 +452,10 @@ Set_iptables(){
 	if [[ ${release} == "centos" ]]; then
 		service iptables save
 		chkconfig --level 2345 iptables on
-	elif [[ ${release} == "debian" ]]; then
+	else
 		iptables-save > /etc/iptables.up.rules
-		cat > /etc/network/if-pre-up.d/iptables<<-EOF
-#!/bin/bash
-/sbin/iptables-restore < /etc/iptables.up.rules
-EOF
+		echo -e '#!/bin/bash\n/sbin/iptables-restore < /etc/iptables.up.rules' > /etc/network/if-pre-up.d/iptables
 		chmod +x /etc/network/if-pre-up.d/iptables
-	elif [[ ${release} == "ubuntu" ]]; then
-		iptables-save > /etc/iptables.up.rules
-		echo -e "\npre-up iptables-restore < /etc/iptables.up.rules
-post-down iptables-save > /etc/iptables.up.rules" >> /etc/network/interfaces
-		chmod +x /etc/network/interfaces
 	fi
 }
 Update_Shell(){
@@ -318,6 +482,10 @@ Update_Shell(){
 	fi
 }
 check_sys
+action=$1
+if [[ "${action}" == "monitor" ]]; then
+	crontab_monitor_goflyway
+else
 echo && echo -e "  GoFlyway 一键管理脚本 ${Red_font_prefix}[v${sh_ver}]${Font_color_suffix}
   -- Toyo | doub.io/goflyway-jc2 --
   
@@ -382,3 +550,4 @@ case "$num" in
 	echo "请输入正确数字 [0-9]"
 	;;
 esac
+fi

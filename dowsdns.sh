@@ -51,7 +51,9 @@ check_pid(){
 }
 Download_dowsdns(){
 	cd "/usr/local"
-	wget -N --no-check-certificate "https://softs.loan/%E7%A7%91%E5%AD%A6%E4%B8%8A%E7%BD%91/PC/dowsDNS/Linux%2BMac/dowsDNS.zip"
+	new_ver=$(wget --no-check-certificate -qO- -t1 -T3 https://api.github.com/repos/dowsnature/dowsDNS/releases| grep "tag_name"| head -n 1| awk -F ":" '{print $2}'| sed 's/\"//g;s/,//g;s/ //g;s/v//g')
+	[[ -z "${new_ver}" ]] && echo -e "${Error} DowsDNS 最新版本号获取失败 !" && exit 1
+	wget -N --no-check-certificate "https://github.com/dowsnature/dowsDNS/releases/download/v${new_ver}/dowsDNS.zip"
 	[[ ! -e "dowsDNS.zip" ]] && echo -e "${Error} DowsDNS 下载失败 !" && exit 1
 	unzip dowsDNS.zip && rm -rf dowsDNS.zip
 	[[ ! -e "dowsDNS-master" ]] && echo -e "${Error} DowsDNS 解压失败 !" && exit 1
@@ -60,14 +62,14 @@ Download_dowsdns(){
 }
 Service_dowsdns(){
 	if [[ ${release} = "centos" ]]; then
-		if ! wget --no-check-certificate "https://softs.loan/Bash/other/dowsdns_centos" -O /etc/init.d/dowsdns; then
+		if ! wget --no-check-certificate "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/service/dowsdns_centos" -O /etc/init.d/dowsdns; then
 			echo -e "${Error} DowsDNS 服务管理脚本下载失败 !" && exit 1
 		fi
 		chmod +x /etc/init.d/dowsdns
 		chkconfig --add dowsdns
 		chkconfig dowsdns on
 	else
-		if ! wget --no-check-certificate "https://softs.loan/Bash/other/dowsdns_debian" -O /etc/init.d/dowsdns; then
+		if ! wget --no-check-certificate "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/service/dowsdns_debian" -O /etc/init.d/dowsdns; then
 			echo -e "${Error} DowsDNS 服务管理脚本下载失败 !" && exit 1
 		fi
 		chmod +x /etc/init.d/dowsdns
@@ -120,7 +122,7 @@ Read_wrcd(){
 	[[ ! -e ${dowsdns_wrcd} ]] && echo -e "${Error} DowsDNS 泛域名解析 配置文件不存在 !" && exit 1
 	wrcd_json=$(cat -n ${dowsdns_wrcd}|sed '$d;1d;s/\"//g;s/,//g')
 	wrcd_json_num=$(echo -e "${wrcd_json}"|wc -l)
-	wrcd_json_num=$(expr $wrcd_json_num + 1)
+	wrcd_json_num=$(echo $[${wrcd_json_num}+1])
 	echo -e "当前DowsDNS 泛域名解析配置(不要问我为什么是从 2 开始)：\n"
 	echo -e "${wrcd_json}\n"
 }
@@ -136,7 +138,7 @@ Set_remote_dns_port(){
 		echo -e "请输入 DowsDNS 远程(上游)DNS解析服务器端口 [1-65535]"
 		stty erase '^H' && read -p "(默认: 53):" dd_remote_dns_port
 		[[ -z "$dd_remote_dns_port" ]] && dd_remote_dns_port="53"
-		expr ${dd_remote_dns_port} + 0 &>/dev/null
+		echo $[${dd_remote_dns_port}+0] &>/dev/null
 		if [[ $? -eq 0 ]]; then
 			if [[ ${dd_remote_dns_port} -ge 1 ]] && [[ ${dd_remote_dns_port} -le 65535 ]]; then
 				echo
@@ -212,7 +214,7 @@ Set_local_dns_port(){
  注意：大部分设备是不支持设置 非53端口的DNS服务器的，所以非必须请直接回车默认使用 53端口。" && echo
 		stty erase '^H' && read -p "(默认: 53):" dd_local_dns_port
 		[[ -z "$dd_local_dns_port" ]] && dd_local_dns_port="53"
-		expr ${dd_local_dns_port} + 0 &>/dev/null
+		echo $[${dd_local_dns_port}+0] &>/dev/null
 		if [[ $? -eq 0 ]]; then
 			if [[ ${dd_local_dns_port} -ge 1 ]] && [[ ${dd_local_dns_port} -le 65535 ]]; then
 				echo && echo "	================================================"
@@ -357,7 +359,7 @@ Del_wrcd(){
 		echo "请根据上面的列表选择你要删除的 泛域名解析 序号数字 [ 2-${wrcd_json_num} ]"
 		stty erase '^H' && read -p "(默认回车取消):" del_wrcd_num
 		[[ -z "$del_wrcd_num" ]] && echo "已取消..." && exit 0
-		expr ${del_wrcd_num} + 0 &>/dev/null
+		echo $[${del_wrcd_num}+0] &>/dev/null
 		if [[ $? -eq 0 ]]; then
 			if [[ ${del_wrcd_num} -ge 2 ]] && [[ ${del_wrcd_num} -le ${wrcd_json_num} ]]; then
 				wrcd_text=$(cat ${dowsdns_wrcd}|sed -n "${del_wrcd_num}p")
@@ -365,7 +367,7 @@ Del_wrcd(){
 				wrcd_ip=$(echo -e "${wrcd_text}"|sed 's/\"//g;s/,//g'|awk -F ":" '{print $2}')
 				del_wrcd_determine=$(echo ${wrcd_text:((${#wrcd_text} - 1))})
 				if [[ ${del_wrcd_num} == ${wrcd_json_num} ]]; then
-					del_wrcd_determine_num=$(expr $del_wrcd_num - 1)
+					del_wrcd_determine_num=$(echo $[${del_wrcd_num}-1])
 					sed -i "${del_wrcd_determine_num}s/,//g" ${dowsdns_wrcd}
 				fi
 				sed -i "${del_wrcd_num}d" ${dowsdns_wrcd}
@@ -399,7 +401,7 @@ Modify_wrcd(){
 		echo "请根据上面的列表选择你要修改的 泛域名解析 序号数字 [ 2-${wrcd_json_num} ]"
 		stty erase '^H' && read -p "(默认回车取消):" modify_wrcd_num
 		[[ -z "$modify_wrcd_num" ]] && echo "已取消..." && exit 0
-		expr ${modify_wrcd_num} + 0 &>/dev/null
+		echo $[${modify_wrcd_num}+0] &>/dev/null
 		if [[ $? -eq 0 ]]; then
 			if [[ ${modify_wrcd_num} -ge 2 ]] && [[ ${modify_wrcd_num} -le ${wrcd_json_num} ]]; then
 				wrcd_name_now=$(cat ${dowsdns_wrcd}|sed -n "${modify_wrcd_num}p"|sed 's/\"//g;s/,//g'|awk -F ":" '{print $1}')
@@ -538,35 +540,18 @@ Set_iptables(){
 }
 View_Log(){
 	[[ ! -e ${dowsdns_log} ]] && echo -e "${Error} dowsDNS 日志文件不存在 !" && exit 1
-	echo && echo -e "${Tip} 按 ${Red_font_prefix}Ctrl+C${Font_color_suffix} 终止查看日志" && echo
+	echo && echo -e "${Tip} 按 ${Red_font_prefix}Ctrl+C${Font_color_suffix} 终止查看日志" && echo -e "如果需要查看完整日志内容，请用 ${Red_font_prefix}cat ${dowsdns_log}${Font_color_suffix} 命令。" && echo
 	tail -f ${dowsdns_log}
 }
 Update_Shell(){
-	echo -e "当前版本为 [ ${sh_ver} ]，开始检测最新版本..."
-	sh_new_ver=$(wget --no-check-certificate -qO- "https://softs.loan/Bash/dowsdns.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1) && sh_new_type="softs"
-	[[ -z ${sh_new_ver} ]] && sh_new_ver=$(wget --no-check-certificate -qO- "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/dowsdns.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1) && sh_new_type="github"
-	[[ -z ${sh_new_ver} ]] && echo -e "${Error} 检测最新版本失败 !" && exit 0
-	if [[ ${sh_new_ver} != ${sh_ver} ]]; then
-		echo -e "发现新版本[ ${sh_new_ver} ]，是否更新？[Y/n]"
-		stty erase '^H' && read -p "(默认: y):" yn
-		[[ -z "${yn}" ]] && yn="y"
-		if [[ ${yn} == [Yy] ]]; then
-			if [[ -e "/etc/init.d/dowsdns" ]]; then
-				rm -rf /etc/init.d/dowsdns
-				Service_dowsdns
-			fi
-			if [[ ${sh_new_type} == "softs" ]]; then
-				wget -N --no-check-certificate https://softs.loan/Bash/dowsdns.sh && chmod +x dowsdns.sh
-			else
-				wget -N --no-check-certificate https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/dowsdns.sh && chmod +x dowsdns.sh
-			fi
-			echo -e "脚本已更新为最新版本[ ${sh_new_ver} ] !"
-		else
-			echo && echo "	已取消..." && echo
-		fi
-	else
-		echo -e "当前已是最新版本[ ${sh_new_ver} ] !"
+	sh_new_ver=$(wget --no-check-certificate -qO- -t1 -T3 "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/dowsdns.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1) && sh_new_type="github"
+	[[ -z ${sh_new_ver} ]] && echo -e "${Error} 无法链接到 Github !" && exit 0
+	if [[ -e "/etc/init.d/dowsdns" ]]; then
+		rm -rf /etc/init.d/dowsdns
+		Service_dowsdns
 	fi
+		wget -N --no-check-certificate "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/dowsdns.sh" && chmod +x dowsdns.sh
+	echo -e "脚本已更新为最新版本[ ${sh_new_ver} ] !(注意：因为更新方式为直接覆盖当前运行的脚本，所以可能下面会提示一些报错，无视即可)" && exit 0
 }
 echo && echo -e "  DowsDNS 一键安装管理脚本 ${Red_font_prefix}[v${sh_ver}]${Font_color_suffix}
   -- Toyo | doub.io/dowsdns-jc3 --

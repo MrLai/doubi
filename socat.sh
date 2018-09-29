@@ -70,7 +70,7 @@ addSocat(){
 		echo -e "请输入 Socat 的 本地监听端口 [1-65535]"
 		stty erase '^H' && read -p "(默认端口: 23333):" Socatport
 		[[ -z "$Socatport" ]] && Socatport="23333"
-		expr ${Socatport} + 0 &>/dev/null
+		echo $[${Socatport}+0] &>/dev/null
 		if [[ $? -eq 0 ]]; then
 			if [[ ${Socatport} -ge 1 ]] && [[ ${Socatport} -le 65535 ]]; then
 				echo
@@ -92,7 +92,7 @@ addSocat(){
 		echo -e "请输入 Socat 远程被转发 端口 [1-65535]"
 		stty erase '^H' && read -p "(默认端口: ${Socatport}):" Socatport1
 		[[ -z "$Socatport1" ]] && Socatport1=${Socatport}
-		expr ${Socatport1} + 0 &>/dev/null
+		echo $[${Socatport1}+0] &>/dev/null
 		if [[ $? -eq 0 ]]; then
 			if [[ ${Socatport1} -ge 1 ]] && [[ ${Socatport1} -le 65535 ]]; then
 				echo
@@ -241,7 +241,7 @@ delSocat(){
 	listSocat
 	stty erase '^H' && read -p "请输入数字 来选择要终止的 Socat 进程:" stopsocat
 	[[ -z "${stopsocat}" ]] && stopsocat="0"
-	expr ${stopsocat} + 0 &>/dev/null
+	echo $[${stopsocat}+0] &>/dev/null
 	if [[ $? -eq 0 ]]; then
 		if [[ ${stopsocat} -ge 1 ]] && [[ ${stopsocat} -le ${socat_total} ]]; then
 			# 删除开机启动
@@ -283,7 +283,7 @@ delSocat(){
 # 查看日志
 tailSocat(){
 	[[ ! -e ${socat_log_file} ]] && echo -e "${Error} Socat 日志文件不存在 !" && exit 1
-	echo && echo -e "${Tip} 按 ${Red_font_prefix}Ctrl+C${Font_color_suffix} 终止查看日志" && echo
+	echo && echo -e "${Tip} 按 ${Red_font_prefix}Ctrl+C${Font_color_suffix} 终止查看日志" && echo -e "如果需要查看完整日志内容，请用 ${Red_font_prefix}cat ${socat_log_file}${Font_color_suffix} 命令。" && echo
 	tail -f ${socat_log_file}
 }
 uninstallSocat(){
@@ -303,27 +303,10 @@ uninstallSocat(){
 	fi
 }
 Update_Shell(){
-	echo -e "当前版本为 [ ${sh_ver} ]，开始检测最新版本..."
-	sh_new_ver=$(wget --no-check-certificate -qO- "https://softs.loan/Bash/socat.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1) && sh_new_type="softs"
-	[[ -z ${sh_new_ver} ]] && sh_new_ver=$(wget --no-check-certificate -qO- "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/socat.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1) && sh_new_type="github"
-	[[ -z ${sh_new_ver} ]] && echo -e "${Error} 检测最新版本失败 !" && exit 0
-	if [[ ${sh_new_ver} != ${sh_ver} ]]; then
-		echo -e "发现新版本[ ${sh_new_ver} ]，是否更新？[Y/n]"
-		stty erase '^H' && read -p "(默认: y):" yn
-		[[ -z "${yn}" ]] && yn="y"
-		if [[ ${yn} == [Yy] ]]; then
-			if [[ $sh_new_type == "softs" ]]; then
-				wget -N --no-check-certificate https://softs.loan/Bash/socat.sh && chmod +x socat.sh
-			else
-				wget -N --no-check-certificate https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/socat.sh && chmod +x socat.sh
-			fi
-			echo -e "脚本已更新为最新版本[ ${sh_new_ver} ] !"
-		else
-			echo && echo "	已取消..." && echo
-		fi
-	else
-		echo -e "当前已是最新版本[ ${sh_new_ver} ] !"
-	fi
+	sh_new_ver=$(wget --no-check-certificate -qO- -t1 -T3 "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/socat.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1) && sh_new_type="github"
+	[[ -z ${sh_new_ver} ]] && echo -e "${Error} 无法链接到 Github !" && exit 0
+	wget -N --no-check-certificate "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/socat.sh" && chmod +x socat.sh
+	echo -e "脚本已更新为最新版本[ ${sh_new_ver} ] !(注意：因为更新方式为直接覆盖当前运行的脚本，所以可能下面会提示一些报错，无视即可)" && exit 0
 }
 check_sys
 [[ ${release} != "debian" ]] && [[ ${release} != "ubuntu" ]] && echo -e "${Error} 本脚本不支持当前系统 ${release} !" && exit 1

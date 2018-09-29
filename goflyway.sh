@@ -5,12 +5,12 @@ export PATH
 #=================================================
 #	System Required: CentOS/Debian/Ubuntu
 #	Description: GoFlyway
-#	Version: 1.0.8
+#	Version: 1.0.10
 #	Author: Toyo
 #	Blog: https://doub.io/goflyway-jc2/
 #=================================================
 
-sh_ver="1.0.8"
+sh_ver="1.0.10"
 filepath=$(cd "$(dirname "$0")"; pwd)
 file_1=$(echo -e "${filepath}"|awk -F "$0" '{print $1}')
 Folder="/usr/local/goflyway"
@@ -118,14 +118,14 @@ Download_goflyway(){
 }
 Service_goflyway(){
 	if [[ ${release} = "centos" ]]; then
-		if ! wget --no-check-certificate https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/other/goflyway_centos -O /etc/init.d/goflyway; then
+		if ! wget --no-check-certificate https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/service/goflyway_centos -O /etc/init.d/goflyway; then
 			echo -e "${Error} GoFlyway 服务管理脚本下载失败 !" && exit 1
 		fi
 		chmod +x /etc/init.d/goflyway
 		chkconfig --add goflyway
 		chkconfig goflyway on
 	else
-		if ! wget --no-check-certificate https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/other/goflyway_debian -O /etc/init.d/goflyway; then
+		if ! wget --no-check-certificate https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/service/goflyway_debian -O /etc/init.d/goflyway; then
 			echo -e "${Error} GoFlyway 服务管理脚本下载失败 !" && exit 1
 		fi
 		chmod +x /etc/init.d/goflyway
@@ -140,14 +140,24 @@ Write_config(){
 	cat > ${CONF}<<-EOF
 port=${new_port}
 passwd=${new_passwd}
+protocol=${new_protocol}
 proxy_pass=${new_proxy_pass}
 EOF
 }
 Read_config(){
 	[[ ! -e ${CONF} ]] && echo -e "${Error} GoFlyway 配置文件不存在 !" && exit 1
-	port=`cat ${CONF}|grep "port"|awk -F "=" '{print $NF}'`
-	passwd=`cat ${CONF}|grep "passwd"|awk -F "=" '{print $NF}'`
-	proxy_pass=`cat ${CONF}|grep "proxy_pass"|awk -F "=" '{print $NF}'`
+	port=$(cat ${CONF}|grep "port"|awk -F "=" '{print $NF}')
+	passwd=$(cat ${CONF}|grep "passwd"|awk -F "=" '{print $NF}')
+	proxy_pass=$(cat ${CONF}|grep "proxy_pass"|awk -F "=" '{print $NF}')
+	protocol=$(cat ${CONF}|grep "protocol"|awk -F "=" '{print $NF}')
+	if [[ -z "${protocol}" ]]; then
+		protocol="http"
+		new_protocol="http"
+		new_port="${port}"
+		new_passwd="${passwd}"
+		new_proxy_pass="${proxy_pass}"
+		Write_config
+	fi
 }
 Set_port(){
 	while true
@@ -155,7 +165,7 @@ Set_port(){
 		echo -e "请输入 GoFlyway 监听端口 [1-65535]（如果要伪装或者套CDN，那么只能使用端口：80 8080 8880 2052 2082 2086 2095）"
 		stty erase '^H' && read -p "(默认: 2333):" new_port
 		[[ -z "${new_port}" ]] && new_port="2333"
-		expr ${new_port} + 0 &>/dev/null
+		echo $[${new_port}+0] &>/dev/null
 		if [[ $? -eq 0 ]]; then
 			if [[ ${new_port} -ge 1 ]] && [[ ${new_port} -le 65535 ]]; then
 				echo && echo "========================"
@@ -187,16 +197,37 @@ Set_proxy_pass(){
 		echo "========================" && echo
 	fi
 }
+Set_protocol(){
+	echo -e "请选择 GoFlyway 传输协议
+	
+ ${Green_font_prefix}1.${Font_color_suffix} HTTP (默认，要使用 CDN、WebSocket 则必须选择 HTTP 协议)
+ ${Green_font_prefix}2.${Font_color_suffix} KCP  (将 TCP 数据转为 KCP，并通过UDP方式传输，可复活被TCP阻断的IP)
+ ${Tip} 如果使用 KCP 协议，那么将不能使用 CDN、WebSocket。另外，部分地区对海外的UDP链接会QOS限速，这可能导致 KCP 协议速度不理想。" && echo
+	stty erase '^H' && read -p "(默认: 1. HTTP):" new_protocol
+	[[ -z "${new_protocol}" ]] && new_protocol="3"
+	if [[ ${new_protocol} == "1" ]]; then
+		new_protocol="http"
+	elif [[ ${new_protocol} == "2" ]]; then
+		new_protocol="kcp"
+	else
+		new_protocol="http"
+	fi
+	echo && echo "========================"
+	echo -e "	协议 : ${Red_background_prefix} ${new_protocol^^} ${Font_color_suffix}"
+	echo "========================" && echo
+}
 Set_conf(){
 	Set_port
 	Set_passwd
+	Set_protocol
 	Set_proxy_pass
 }
 Modify_port(){
-	Set_port
 	Read_config
+	Set_port
 	new_passwd="${passwd}"
 	new_proxy_pass="${proxy_pass}"
+	new_protocol="${protocol}"
 	Del_iptables
 	Write_config
 	Add_iptables
@@ -204,24 +235,35 @@ Modify_port(){
 	Restart_goflyway
 }
 Modify_passwd(){
-	Set_passwd
 	Read_config
+	Set_passwd
 	new_port="${port}"
 	new_proxy_pass="${proxy_pass}"
+	new_protocol="${protocol}"
 	Write_config
 	Restart_goflyway
 }
 Modify_proxy_pass(){
-	Set_proxy_pass
 	Read_config
+	Set_proxy_pass
 	new_port="${port}"
 	new_passwd="${passwd}"
+	new_protocol="${protocol}"
+	Write_config
+	Restart_goflyway
+}
+Modify_protocol(){
+	Read_config
+	Set_protocol
+	new_port="${port}"
+	new_passwd="${passwd}"
+	new_proxy_pass="${proxy_pass}"
 	Write_config
 	Restart_goflyway
 }
 Modify_all(){
-	Set_conf
 	Read_config
+	Set_conf
 	Del_iptables
 	Write_config
 	Add_iptables
@@ -233,10 +275,11 @@ Set_goflyway(){
 	echo && echo -e "你要做什么？
  ${Green_font_prefix}1.${Font_color_suffix}  修改 端口配置
  ${Green_font_prefix}2.${Font_color_suffix}  修改 密码配置
- ${Green_font_prefix}3.${Font_color_suffix}  修改 伪装配置(反向代理)
- ${Green_font_prefix}4.${Font_color_suffix}  修改 全部配置
+ ${Green_font_prefix}3.${Font_color_suffix}  修改 传输协议
+ ${Green_font_prefix}4.${Font_color_suffix}  修改 伪装配置(反向代理)
+ ${Green_font_prefix}5.${Font_color_suffix}  修改 全部配置
 ————————————————
- ${Green_font_prefix}5.${Font_color_suffix}  监控 运行状态
+ ${Green_font_prefix}6.${Font_color_suffix}  监控 运行状态
  
  ${Tip} 用户的端口是不能重复的，密码可以重复 !" && echo
 	stty erase '^H' && read -p "(默认: 取消):" gf_modify
@@ -246,13 +289,15 @@ Set_goflyway(){
 	elif [[ ${gf_modify} == "2" ]]; then
 		Modify_passwd
 	elif [[ ${gf_modify} == "3" ]]; then
-		Modify_proxy_pass
+		Modify_protocol
 	elif [[ ${gf_modify} == "4" ]]; then
-		Modify_all
+		Modify_proxy_pass
 	elif [[ ${gf_modify} == "5" ]]; then
+		Modify_all
+	elif [[ ${gf_modify} == "6" ]]; then
 		Set_crontab_monitor_goflyway
 	else
-		echo -e "${Error} 请输入正确的数字(1-5)" && exit 1
+		echo -e "${Error} 请输入正确的数字(1-6)" && exit 1
 	fi
 }
 Install_goflyway(){
@@ -351,6 +396,7 @@ View_goflyway(){
 	echo -e " 地址\t: ${Green_font_prefix}${ip}${Font_color_suffix}"
 	echo -e " 端口\t: ${Green_font_prefix}${port}${Font_color_suffix}"
 	echo -e " 密码\t: ${Green_font_prefix}${passwd}${Font_color_suffix}"
+	echo -e " 协议\t: ${Green_font_prefix}${protocol^^}${Font_color_suffix}"
 	echo -e " 伪装\t: ${Green_font_prefix}${proxy_pass}${Font_color_suffix}"
 	echo -e "${link}"
 	echo -e "${Tip} 链接仅适用于Windows系统的 Goflyway Tools 客户端（https://doub.io/dbrj-11/）。"
@@ -362,7 +408,7 @@ urlsafe_base64(){
 }
 link_qr(){
 	PWDbase64=$(urlsafe_base64 "${passwd}")
-	base64=$(urlsafe_base64 "${ip}:${port}:${PWDbase64}")
+	base64=$(urlsafe_base64 "${ip}:${port}@${PWDbase64}:${protocol}")
 	url="goflyway://${base64}"
 	QRcode="http://doub.pw/qr/qr.php?text=${url}"
 	link=" 链接\t: ${Red_font_prefix}${url}${Font_color_suffix} \n 二维码 : ${Red_font_prefix}${QRcode}${Font_color_suffix} \n "
@@ -370,7 +416,7 @@ link_qr(){
 View_Log(){
 	check_installed_status
 	[[ ! -e ${Log_File} ]] && echo -e "${Error} GoFlyway 日志文件不存在 !" && exit 1
-	echo && echo -e "${Tip} 按 ${Red_font_prefix}Ctrl+C${Font_color_suffix} 终止查看日志" && echo
+	echo && echo -e "${Tip} 按 ${Red_font_prefix}Ctrl+C${Font_color_suffix} 终止查看日志" && echo -e "如果需要查看完整日志内容，请用 ${Red_font_prefix}cat ${Log_File}${Font_color_suffix} 命令。" && echo
 	tail -f ${Log_File}
 }
 # 显示 连接信息
@@ -556,31 +602,14 @@ Set_iptables(){
 	fi
 }
 Update_Shell(){
-	echo -e "当前版本为 [ ${sh_ver} ]，开始检测最新版本..."
-	sh_new_ver=$(wget --no-check-certificate -qO- "https://softs.loan/Bash/goflyway.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1) && sh_new_type="softs"
-	[[ -z ${sh_new_ver} ]] && sh_new_ver=$(wget --no-check-certificate -qO- "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/goflyway.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1) && sh_new_type="github"
-	[[ -z ${sh_new_ver} ]] && echo -e "${Error} 检测最新版本失败 !" && exit 0
-	if [[ ${sh_new_ver} != ${sh_ver} ]]; then
-		echo -e "发现新版本[ ${sh_new_ver} ]，是否更新？[Y/n]"
-		stty erase '^H' && read -p "(默认: y):" yn
-		[[ -z "${yn}" ]] && yn="y"
-		if [[ ${yn} == [Yy] ]]; then
-			if [[ -e "/etc/init.d/goflyway" ]]; then
-				rm -rf /etc/init.d/goflyway
-				Service_goflyway
-			fi
-			if [[ $sh_new_type == "softs" ]]; then
-				wget -N --no-check-certificate https://softs.loan/Bash/goflyway.sh && chmod +x goflyway.sh
-			else
-				wget -N --no-check-certificate https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/goflyway.sh && chmod +x goflyway.sh
-			fi
-			echo -e "脚本已更新为最新版本[ ${sh_new_ver} ] !"
-		else
-			echo && echo "	已取消..." && echo
-		fi
-	else
-		echo -e "当前已是最新版本[ ${sh_new_ver} ] !"
+	sh_new_ver=$(wget --no-check-certificate -qO- -t1 -T3 "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/goflyway.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1) && sh_new_type="github"
+	[[ -z ${sh_new_ver} ]] && echo -e "${Error} 无法链接到 Github !" && exit 0
+	if [[ -e "/etc/init.d/goflyway" ]]; then
+		rm -rf /etc/init.d/goflyway
+		Service_goflyway
 	fi
+	wget -N --no-check-certificate "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/goflyway.sh" && chmod +x goflyway.sh
+	echo -e "脚本已更新为最新版本[ ${sh_new_ver} ] !(注意：因为更新方式为直接覆盖当前运行的脚本，所以可能下面会提示一些报错，无视即可)" && exit 0
 }
 check_sys
 action=$1

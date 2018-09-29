@@ -83,14 +83,14 @@ Download_pipes(){
 }
 Service_pipes(){
 	if [[ ${release} = "centos" ]]; then
-		if ! wget --no-check-certificate https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/other/pipes_centos -O /etc/init.d/pipes; then
+		if ! wget --no-check-certificate https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/service/pipes_centos -O /etc/init.d/pipes; then
 			echo -e "${Error} ShadowsocksR服务 管理脚本下载失败 !" && exit 1
 		fi
 		chmod +x /etc/init.d/pipes
 		chkconfig --add pipes
 		chkconfig pipes on
 	else
-		if ! wget --no-check-certificate https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/other/pipes_debian -O /etc/init.d/pipes; then
+		if ! wget --no-check-certificate https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/service/pipes_debian -O /etc/init.d/pipes; then
 			echo -e "${Error} ShadowsocksR服务 管理脚本下载失败 !" && exit 1
 		fi
 		chmod +x /etc/init.d/pipes
@@ -143,7 +143,7 @@ Set_user_pipes(){
 		echo -e "请输入 PipeSocks 本地监听端口 [1-65535]"
 		stty erase '^H' && read -p "(默认: 2333):" pipes_port
 		[[ -z "$pipes_port" ]] && pipes_port="2333"
-		expr ${pipes_port} + 0 &>/dev/null
+		echo $[${pipes_port}+0] &>/dev/null
 		if [[ $? -eq 0 ]]; then
 			if [[ ${pipes_port} -ge 1 ]] && [[ ${pipes_port} -le 65535 ]]; then
 				echo && echo "————————————————————"
@@ -233,7 +233,7 @@ Restart_pipes(){
 Log_pipes(){
 	check_installed_status
 	[[ ! -e ${pipes_log} ]] && echo -e "${Error_font_prefix}[错误]${Font_suffix} PipeSocks 日志文件不存在 !" && exit 1
-	echo && echo -e "使用 ${Info_background_prefix} Ctrl+C ${Font_suffix} 键退出查看日志 !" && echo
+	echo && echo -e "使用 ${Info_background_prefix} Ctrl+C ${Font_suffix} 键退出查看日志 !" && echo -e "如果需要查看完整日志内容，请用 ${Info_background_prefix}cat ${pipes_log}${Font_suffix} 命令。" && echo
 	tail -f ${pipes_log}
 }
 Uninstall_pipes(){

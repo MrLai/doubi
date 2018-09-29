@@ -77,7 +77,7 @@ Download_mtproxy(){
 	[[ ! -e "MTProxy/" ]] && echo -e "${Error} MTProxy 下载失败!" && cd '/tmp' && rm -rf '/tmp/mtproxy' && exit 1
 	cd MTProxy
 	make
-	[[ ! -e "objs/bin/mtproto-proxy" ]] && echo -e "${Error} MTProxy 编译失败!" && make clean && cd '/tmp' && rm -rf '/tmp/mtproxy' && exit 1
+	[[ ! -e "objs/bin/mtproto-proxy" ]] && echo -e "${Error} MTProxy 编译失败!" && echo -e "另外，如果在上面几行看到 ${Green_font_prefix}xxxxx option \"-std=gnu11\"${Font_color_suffix} 字样，说明是系统版本过低，请尝试更换系统重试！" && make clean && cd '/tmp' && rm -rf '/tmp/mtproxy' && exit 1
 	[[ ! -e "${file}" ]] && mkdir "${file}"
 	\cp -f objs/bin/mtproto-proxy "${file}"
 	chmod +x "${mtproxy_file}"
@@ -85,26 +85,32 @@ Download_mtproxy(){
 	rm -rf '/tmp/mtproxy'
 }
 Download_secret(){
+	[[ -e "${mtproxy_secret}" ]] && rm -rf "${mtproxy_secret}"
 	wget --no-check-certificate -q "https://core.telegram.org/getProxySecret" -O "${mtproxy_secret}"
-	[[ ! -e "${mtproxy_secret}" ]] && echo -e "${Error} MTProxy Secret下载失败!" && exit 1
+	[[ ! -e "${mtproxy_secret}" ]] && echo -e "${Error} MTProxy Secret下载失败! 脚本将会继续安装但会启动失败，请尝试手动下载：${Green_font_prefix}wget --no-check-certificate -q \"https://core.telegram.org/getProxySecret\" -O \"${mtproxy_secret}\"${Font_color_suffix}"
 	echo -e "${Info} MTProxy Secret下载成功!"
 }
 Download_multi(){
+	[[ -e "${mtproxy_multi}" ]] && rm -rf "${mtproxy_multi}"
 	wget --no-check-certificate -q "https://core.telegram.org/getProxyConfig" -O "${mtproxy_multi}"
-	[[ ! -e "${mtproxy_multi}" ]] && echo -e "${Error} MTProxy Multi下载失败!" && exit 1
+	[[ ! -e "${mtproxy_multi}" ]] && echo -e "${Error} MTProxy Multi下载失败!脚本将会继续安装但会启动失败，请尝试手动下载：${Green_font_prefix}wget --no-check-certificate -q \"https://core.telegram.org/getProxyConfig\" -O \"${mtproxy_multi}\"${Font_color_suffix}"
 	echo -e "${Info} MTProxy Secret下载成功!"
 }
 Service_mtproxy(){
 	if [[ ${release} = "centos" ]]; then
-		if ! wget --no-check-certificate "https://softs.loan/Bash/other/mtproxy_centos" -O /etc/init.d/mtproxy; then
-			echo -e "${Error} MTProxy服务 管理脚本下载失败 !" && exit 1
+		if ! wget --no-check-certificate "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/service/mtproxy_centos" -O /etc/init.d/mtproxy; then
+			echo -e "${Error} MTProxy服务 管理脚本下载失败 !"
+			rm -rf "${file}"
+			exit 1
 		fi
 		chmod +x "/etc/init.d/mtproxy"
 		chkconfig --add mtproxy
 		chkconfig mtproxy on
 	else
-		if ! wget --no-check-certificate "https://softs.loan/Bash/other/mtproxy_debian" -O /etc/init.d/mtproxy; then
-			echo -e "${Error} MTProxy服务 管理脚本下载失败 !" && exit 1
+		if ! wget --no-check-certificate "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/service/mtproxy_debian" -O /etc/init.d/mtproxy; then
+			echo -e "${Error} MTProxy服务 管理脚本下载失败 !"
+			rm -rf "${file}"
+			exit 1
 		fi
 		chmod +x "/etc/init.d/mtproxy"
 		update-rc.d -f mtproxy defaults
@@ -159,7 +165,7 @@ Set_port(){
 		echo -e "请输入 MTProxy 端口 [1-65535]"
 		stty erase '^H' && read -p "(默认: 7000):" mtp_port
 		[[ -z "${mtp_port}" ]] && mtp_port="7000"
-		expr ${mtp_port} + 0 &>/dev/null
+		echo $[${mtp_port}+0] &>/dev/null
 		if [[ $? -eq 0 ]]; then
 			if [[ ${mtp_port} -ge 1 ]] && [[ ${mtp_port} -le 65535 ]]; then
 				echo && echo "========================"
@@ -175,12 +181,20 @@ Set_port(){
 		done
 }
 Set_passwd(){
-	echo "请输入 MTProxy 密匙（手动输入必须为32位，[0-9][a-z][A-Z]，建议随机生成）"
-	stty erase '^H' && read -p "(默认：随机生成):" mtp_passwd
-	[[ -z "${mtp_passwd}" ]] && mtp_passwd=$(date +%s%N | md5sum | head -c 32)
-	echo && echo "========================"
-	echo -e "	密码 : ${Red_background_prefix} dd${mtp_passwd} ${Font_color_suffix}"
-	echo "========================" && echo
+	while true
+		do
+		echo "请输入 MTProxy 密匙（手动输入必须为32位，[0-9][a-z][A-Z]，建议随机生成）"
+		stty erase '^H' && read -p "(避免出错，强烈推荐随机生成，直接回车):" mtp_passwd
+		if [[ -z "${mtp_passwd}" ]]; then
+			mtp_passwd=$(date +%s%N | md5sum | head -c 32)
+		else
+			[[ ${#mtp_passwd} != 32 ]] && echo -e "${Error} 请输入正确的密匙（32位字符）。" && continue
+		fi
+		echo && echo "========================"
+		echo -e "	密码 : ${Red_background_prefix} dd${mtp_passwd} ${Font_color_suffix}"
+		echo "========================" && echo
+		break
+	done
 }
 Set_tag(){
 	echo "请输入 MTProxy 的 TAG标签（TAG标签只有在通过官方机器人 @MTProxybot 分享代理账号后才会获得，不清楚请留空回车）"
@@ -194,7 +208,7 @@ Set_tag(){
 Set_nat(){
 	echo -e "\n${Green_font_prefix}当前服务器所有网卡信息：${Font_color_suffix}\n"
 	ifconfig
-	echo "如果本机是NAT服务器（谷歌云、微软云、阿里云等），则请输入你的服务器内网IP，否则会导致无法使用。如果不是请直接回车！"
+	echo "如果本机是NAT服务器（谷歌云、微软云、阿里云等，网卡绑定的IP为 10.xx.xx.xx 开头的），则请输入你的服务器内网IP，否则会导致无法使用。如果不是请直接回车！"
 	stty erase '^H' && read -p "(默认：回车跳过):" mtp_nat
 	if [[ -z "${mtp_nat}" ]]; then
 		mtp_nat=""
@@ -398,7 +412,7 @@ View_mtproxy(){
 View_Log(){
 	check_installed_status
 	[[ ! -e ${mtproxy_log} ]] && echo -e "${Error} MTProxy 日志文件不存在 !" && exit 1
-	echo && echo -e "${Tip} 按 ${Red_font_prefix}Ctrl+C${Font_color_suffix} 终止查看日志(正常情况是没有使用日志记录的)" && echo
+	echo && echo -e "${Tip} 按 ${Red_font_prefix}Ctrl+C${Font_color_suffix} 终止查看日志" && echo -e "如果需要查看完整日志内容，请用 ${Red_font_prefix}cat ${mtproxy_log}${Font_color_suffix} 命令。" && echo
 	tail -f ${mtproxy_log}
 }
 # 显示 连接信息
@@ -634,31 +648,14 @@ Set_iptables(){
 	fi
 }
 Update_Shell(){
-	echo -e "当前版本为 [ ${sh_ver} ]，开始检测最新版本..."
-	sh_new_ver=$(wget --no-check-certificate -qO- "https://softs.loan/Bash/mtproxy.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1) && sh_new_type="softs"
-	[[ -z ${sh_new_ver} ]] && sh_new_ver=$(wget --no-check-certificate -qO- "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/mtproxy.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1) && sh_new_type="github"
-	[[ -z ${sh_new_ver} ]] && echo -e "${Error} 检测最新版本失败 !" && exit 0
-	if [[ ${sh_new_ver} != ${sh_ver} ]]; then
-		echo -e "发现新版本[ ${sh_new_ver} ]，是否更新？[Y/n]"
-		stty erase '^H' && read -p "(默认: y):" yn
-		[[ -z "${yn}" ]] && yn="y"
-		if [[ ${yn} == [Yy] ]]; then
-			if [[ -e "/etc/init.d/mtproxy" ]]; then
-				rm -rf /etc/init.d/mtproxy
-				Service_mtproxy
-			fi
-			if [[ ${sh_new_type} == "softs" ]]; then
-				wget -N --no-check-certificate https://softs.loan/Bash/mtproxy.sh && chmod +x mtproxy.sh
-			else
-				wget -N --no-check-certificate https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/mtproxy.sh && chmod +x mtproxy.sh
-			fi
-			echo -e "脚本已更新为最新版本[ ${sh_new_ver} ] !"
-		else
-			echo && echo "	已取消..." && echo
-		fi
-	else
-		echo -e "当前已是最新版本[ ${sh_new_ver} ] !"
+	sh_new_ver=$(wget --no-check-certificate -qO- -t1 -T3 "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/mtproxy.sh"|grep 'sh_ver="'|awk -F "=" '{print $NF}'|sed 's/\"//g'|head -1) && sh_new_type="github"
+	[[ -z ${sh_new_ver} ]] && echo -e "${Error} 无法链接到 Github !" && exit 0
+	if [[ -e "/etc/init.d/mtproxy" ]]; then
+		rm -rf /etc/init.d/mtproxy
+		Service_mtproxy
 	fi
+	wget -N --no-check-certificate "https://raw.githubusercontent.com/ToyoDAdoubi/doubi/master/mtproxy.sh" && chmod +x mtproxy.sh
+	echo -e "脚本已更新为最新版本[ ${sh_new_ver} ] !(注意：因为更新方式为直接覆盖当前运行的脚本，所以可能下面会提示一些报错，无视即可)" && exit 0
 }
 check_sys
 action=$1
